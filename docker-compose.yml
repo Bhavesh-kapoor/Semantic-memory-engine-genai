@@ -1,0 +1,47 @@
+
+services:
+  node:
+    build:
+      context: .
+      dockerfile: docker/node/Dockerfile
+    container_name: node-environment
+    command: npm run dev
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    depends_on:
+      - redis
+      - postgress_database
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: development_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+
+  postgress_database:
+    container_name: postgress_database
+    build:
+      context: ./docker/pgvector/
+      dockerfile: dockerfile
+
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: 'postgres'
+      POSTGRES_PASSWORD: 'root'
+      POSTGRES_DB: 'mydb'
+    volumes:
+      - pgdata:/var/lib/postgresql
+
+volumes:
+  pgdata:
+  redis_data:

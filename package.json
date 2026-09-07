@@ -1,0 +1,29 @@
+{
+  "name": "semantic-memory-engine-genai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start":"node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhavesh-weaddo/Semantic-memory-engine-genai.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/bhavesh-weaddo/Semantic-memory-engine-genai/issues"
+  },
+  "homepage": "https://github.com/bhavesh-weaddo/Semantic-memory-engine-genai#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "nodemon": "^3.1.14",
+    "openai": "^7.10.0",
+    "pg": "^8.23.0"
+  }
+}
