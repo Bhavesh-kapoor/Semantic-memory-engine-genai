@@ -1,0 +1,20 @@
+FROM postgres:18
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    git \
+    build-essential \
+    postgresql-server-dev-18 \
+    clang \
+    rustc \
+    cargo \
+    && update-ca-certificates
+
+RUN git clone --branch v0.8.1 https://github.com/pgvector/pgvector.git /tmp/pgvector \
+    && cd /tmp/pgvector \
+    && make \
+    && make install \
+    && rm -rf /tmp/pgvector
+
+RUN mkdir -p /var/lib/postgresql \
+    && chown -R postgres:postgres /var/lib/postgresql
