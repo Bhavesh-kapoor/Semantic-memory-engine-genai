@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import APP_CONFIG from '../config/utils.config.js'
+import APP_CONFIG from "../utils/config.utils.js";
 
 const db = new Pool({
     user: APP_CONFIG.DB_USER,
