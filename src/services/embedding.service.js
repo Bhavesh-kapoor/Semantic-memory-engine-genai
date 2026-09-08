@@ -13,10 +13,35 @@ class MemoryService {
                 input: text,
                 model: this.embedding_model
             })
-            return await response.data[0].embedding
+            return response.data[0].embedding
         } catch (err) {
             console.log(err)
+            throw err
         }
+    }
+
+    storeMemory = async (text) => {
+        const client = await this.db.connect()
+        try {
+            await client.query('BEGIN')
+            let textEmbeddings = await this.createEmbeddings(text)
+            textEmbeddings = `[${textEmbeddings.join(',')}]`
+            let query = "INSERT INTO memories (memory,embeddings) VALUES ($1 ,$2)"
+            let memory = await client.query(query, [text, textEmbeddings])
+            await client.query('COMMIT')
+            if (memory.rowCount > 0) {
+                return JSON.stringify({ "message": 'Memory stored successfully!' })
+            }
+            return JSON.stringify({ "message": 'something went wrong' })
+
+        } catch (err) {
+            await client.query('ROLLBACK')
+            console.log(err)
+            throw err
+        } finally {
+            client.release()
+        }
+
     }
 }
 

@@ -12,18 +12,16 @@ import MemoryService from './src/services/embedding.service.js';
 let r1 = readline.createInterface({ input, output })
 const askQuestion = async (firstTime) => {
     try {
-        let ask = firstTime ? "Ask Something: " : '';
+        let ask = firstTime ? "Ask Something: " : 'user: ';
         let userQuery = await r1.question(ask)
         if (userQuery == 'exit') {
             r1.close();
             return
         }
-
-        // create embeddings of it 
-        let memory = new MemoryService()
-        let userembeddings = await memory.createEmbeddings(userQuery);
-        console.log("user embeddings: ", userembeddings)
-        askQuestion()
+        let memory_obj = new MemoryService()
+        let memory = await memory_obj.storeMemory(userQuery);
+        console.log("memory_obj: ", JSON.parse(memory).message)
+        await askQuestion()
 
 
 
