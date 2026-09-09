@@ -43,6 +43,22 @@ class MemoryService {
         }
 
     }
+
+    fetchMemory = async (userQuery) => {
+        try {
+            let userEmbeddings = await this.createEmbeddings(userQuery);
+            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories  order by  embeddings <=>$1::vector LIMIT $2"
+            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5])
+            return res.rows
+
+        } catch (err) {
+            console.log("ERROR: ", err)
+            throw err
+        }
+    }
+
+
+
 }
 
 export default MemoryService

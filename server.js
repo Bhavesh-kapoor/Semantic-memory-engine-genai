@@ -19,8 +19,9 @@ const askQuestion = async (firstTime) => {
             return
         }
         let memory_obj = new MemoryService()
-        let memory = await memory_obj.storeMemory(userQuery);
-        console.log("memory_obj: ", JSON.parse(memory).message)
+        // let memory = await memory_obj.storeMemory(userQuery);
+        let memories = await memory_obj.fetchMemory(userQuery);
+        console.log("memories: ", memories)
         await askQuestion()
 
 
