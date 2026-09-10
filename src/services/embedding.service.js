@@ -30,9 +30,9 @@ class MemoryService {
             let memory = await client.query(query, [text, textEmbeddings])
             await client.query('COMMIT')
             if (memory.rowCount > 0) {
-                return JSON.stringify({ "message": 'Memory stored successfully!' })
+                return { "message": 'Memory stored successfully!' }
             }
-            return JSON.stringify({ "message": 'something went wrong' })
+            return { "message": 'something went wrong' }
 
         } catch (err) {
             await client.query('ROLLBACK')
