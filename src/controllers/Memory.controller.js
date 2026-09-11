@@ -22,6 +22,13 @@ class MemoryController {
         return responseHandler(res, null, result, 200)
     })
 
+    llmCall = asyncHandler(async (req, res) => {
+        const { query } = req.body
+        if (!query) { return responseHandler(res, null, 'user query  is required', 400) }
+        const result = await this.memoryService.askAi(query)
+        return responseHandler(res, result, "response generated successfully!", 200)
+    })
+
 
 
 }

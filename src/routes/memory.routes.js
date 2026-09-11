@@ -4,5 +4,6 @@ let router = express.Router()
 
 router.post('/', MemoryController.store)
 router.post('/search', MemoryController.search)
+router.post('/llm-call', MemoryController.llmCall)
 
 export default router;

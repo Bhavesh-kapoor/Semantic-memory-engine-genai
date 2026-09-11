@@ -47,8 +47,8 @@ class MemoryService {
     fetchMemory = async (userQuery) => {
         try {
             let userEmbeddings = await this.createEmbeddings(userQuery);
-            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories  order by  embeddings <=>$1::vector LIMIT $2"
-            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5])
+            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories where (1 - (embeddings <=>$1::vector)) > $3    order by  embeddings <=>$1::vector LIMIT $2"
+            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5,0.30])
             return res.rows
 
         } catch (err) {
@@ -57,8 +57,45 @@ class MemoryService {
         }
     }
 
+    askAi = async (userQuery) => {
+        try {
+            let memories = await this.fetchMemory(userQuery)
+            console.log(memories)
+            const prompt = `
+                You are an AI assistant with access to the user's stored memories.
 
+                Use the memories below to answer the user's question.
 
+                Rules:
+                - Answer only using the provided memories.
+                - Do not invent or assume information.
+                - If the memories do not contain enough information, say that you don't have enough information.
+                - Give a concise and natural answer.
+
+                Relevant memories:
+                ${memories.map(item => `- ${item.memory}`).join('\n')}
+
+                User question:
+                ${userQuery}
+                `;
+
+            let input = [
+                {
+                    'role': 'system',
+                    'content': prompt
+                }
+            ]
+            let llm = await OpenAIClient.responses.create({
+                model: 'gpt-4.1-nano',
+                input: input,
+                max_output_tokens: 300
+            })
+            return { output: llm.output_text, userQuestion: userQuery }
+        } catch (Error) {
+            console.log("ERROR WHILE GENERATING LLM RESPONSE", Error)
+            throw Error
+        }
+    }
 }
 
 export default MemoryService
