@@ -29,6 +29,17 @@ class MemoryController {
         return responseHandler(res, result, "response generated successfully!", 200)
     })
 
+    memorySearch = asyncHandler(async (req, res) => {
+        const { query } = req.body
+        if (!query) { return responseHandler(res, null, 'user query  is required', 400) }
+        let response = await this.memoryService.memoryDecision(query, 0.61)
+
+        return responseHandler(res, response, "memory fetched successfully!", 200)
+
+    })
+
+
+
 
 
 }

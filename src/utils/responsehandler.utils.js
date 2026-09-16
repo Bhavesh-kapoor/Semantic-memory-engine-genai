@@ -5,4 +5,4 @@ const responseHandler = (res, data = null, message = "Sucess", statusCode = 200)
         message
     })
 }
-export default responseHandler
+    export default responseHandler
