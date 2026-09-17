@@ -20,14 +20,14 @@ class MemoryService {
         }
     }
 
-    storeMemory = async (text) => {
+    storeMemory = async (text, user_id, memory_type, source) => {
         const client = await this.db.connect()
         try {
             await client.query('BEGIN')
             let textEmbeddings = await this.createEmbeddings(text)
             textEmbeddings = `[${textEmbeddings.join(',')}]`
-            let query = "INSERT INTO memories (memory,embeddings) VALUES ($1 ,$2)"
-            let memory = await client.query(query, [text, textEmbeddings])
+            let query = "INSERT INTO memories (memory,embeddings,user_id,source ,memory_type) VALUES ($1,$2,$3,$4,$5)"
+            let memory = await client.query(query, [text, textEmbeddings, user_id, source, memory_type])
             await client.query('COMMIT')
             if (memory.rowCount > 0) {
                 return { "message": 'Memory stored successfully!' }
@@ -60,7 +60,6 @@ class MemoryService {
     askAi = async (userQuery) => {
         try {
             let memories = await this.fetchMemory(userQuery)
-            console.log(memories)
             const prompt = `
                 You are an AI assistant with access to the user's stored memories.
 
@@ -117,8 +116,9 @@ class MemoryService {
             //  get the memeory search response 
             let userStoreMemory = await this.memorySearch(query, duplcateThreasholdValue);
             // if no userstore memory found then it will be insert in the db 
+            let metaData = await this.memoryMetaData(query);
             if (userStoreMemory.length === 0) {
-                return await this.storeMemory(query)
+                return await this.storeMemory(query, 100, metaData.output.memory_type, metaData.output.source)
             }
             // if similarity score if less then 0.80 but greater then or equal to 0.60  then  system will decide whether the information need to be  update or insert
             let score = Number(userStoreMemory[0].duplicate_threashold_value.toFixed(2));
@@ -133,7 +133,7 @@ class MemoryService {
                 case "UPDATE":
                     return await this.updateMemory(query, userStoreMemory) // update the memory
                 case "INSERT":
-                    return await this.storeMemory(query);
+                    return await this.storeMemory(query,100,metaData.output.memory_type, metaData.output.source);
                 case "IGNORE":
                     return {
                         "decision": "IGNORE",
@@ -235,6 +235,112 @@ class MemoryService {
         }
         finally {
             client.release()
+        }
+    }
+
+    memoryMetaData = async (memory) => {
+        try {
+            let prompt = `You are a Memory Metadata Extraction Engine for an AI memory system.
+
+            Your job is to analyze a piece of user information and extract structured metadata.
+
+            Given a user memory, determine:
+
+            1. memory_type
+            2. source
+            3. importance
+            4. confidence
+            5. whether this information is actually worth storing as long-term memory
+
+            Allowed memory_type values:
+
+            - fact
+            Stable information about the user or their situation.
+            Example: "I work as a backend developer."
+
+            - preference
+            User likes, dislikes, preferences, or choices.
+            Example: "I prefer working remotely."
+
+            - goal
+            Something the user wants to achieve.
+            Example: "I want to become a senior AI engineer."
+
+            - skill
+            Something the user knows, is learning, or has experience with.
+            Example: "I am learning LangChain."
+
+            - personal
+            Personal information that may be useful for future conversations.
+            Example: "I have a dog named Bruno."
+
+            - instruction
+            A persistent instruction about how the AI should interact with the user.
+            Example: "Always explain concepts with practical examples."
+
+            - temporary
+            Short-lived information that is unlikely to be useful later.
+            Example: "I am going to the gym today."
+
+            - other
+            Information that does not clearly fit the above categories.
+
+            Source should represent where the memory came from.
+
+            Allowed source values:
+
+            - conversation
+            - profile
+            - manual
+            - system
+            - imported
+
+            For normal user messages, use "conversation".
+            user message is : ${memory}
+
+            Importance must be:
+
+            - low
+            - medium
+            - high
+
+            Confidence must be a number between 0 and 1.
+
+            store_memory should be true only if the information is useful for future conversations and has reasonable long-term value.
+
+            Return JSON only.
+
+            Required format:
+
+            {
+            "memory": "original memory text",
+            "memory_type": "fact | preference | goal | skill | personal | instruction | temporary | other",
+            "source": "conversation | profile | manual | system | imported",
+            "importance": "low | medium | high",
+            "confidence": 0.0,
+            "store_memory": true,
+            "reason": "short explanation"
+            }
+
+            Do not add any fields.
+            Do not return markdown.
+            Do not return explanations outside JSON.
+             `
+            let input = [{
+                "role": "system",
+                "content": prompt
+            }]
+            let llm = await OpenAIClient.responses.create({
+                model: 'gpt-4.1-nano',
+                input: input,
+                max_output_tokens: 300
+            })
+            return {
+                output: JSON.parse(llm.output_text),
+                question: memory
+            };
+        } catch (err) {
+            throw err;
         }
     }
 }
