@@ -44,11 +44,11 @@ class MemoryService {
 
     }
 
-    fetchMemory = async (userQuery) => {
+    fetchMemory = async (userQuery, user_id) => {
         try {
             let userEmbeddings = await this.createEmbeddings(userQuery);
-            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories where (1 - (embeddings <=>$1::vector)) > $3    order by  embeddings <=>$1::vector LIMIT $2"
-            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5, 0.30])
+            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories where (1 - (embeddings <=>$1::vector)) > $3 and user_id =$4    order by  embeddings <=>$1::vector LIMIT $2"
+            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5, 0.30, user_id])
             return res.rows
 
         } catch (err) {
@@ -57,9 +57,9 @@ class MemoryService {
         }
     }
 
-    askAi = async (userQuery) => {
+    askAi = async (userQuery,user_id) => {
         try {
-            let memories = await this.fetchMemory(userQuery)
+            let memories = await this.fetchMemory(userQuery,user_id)
             const prompt = `
                 You are an AI assistant with access to the user's stored memories.
 
@@ -96,13 +96,13 @@ class MemoryService {
         }
     }
 
-    memorySearch = async (query, duplcateThreasholdValue) => {
+    memorySearch = async (query, duplcateThreasholdValue,user_id) => {
         try {
             // 1. generate user embeddings
             let userEmbeddings = await this.createEmbeddings(query);
             // 2. find the top1 memory from the database with duplicate threashold,
-            let sqlQuery = "SELECT id, memory, (1 - (embeddings <=> $1::vector)) as duplicate_threashold_value FROM memories WHERE (1 - (embeddings <=> $1::vector)) > $2 order by (embeddings <=> $1::vector) LIMIT $3";
-            let res = await this.db.query(sqlQuery, [`[${userEmbeddings.join(',')}]`, duplcateThreasholdValue, 1]);
+            let sqlQuery = "SELECT id, memory, (1 - (embeddings <=> $1::vector)) as duplicate_threashold_value FROM memories WHERE (1 - (embeddings <=> $1::vector)) > $2  and user_id = $4 order by (embeddings <=> $1::vector) LIMIT $3";
+            let res = await this.db.query(sqlQuery, [`[${userEmbeddings.join(',')}]`, duplcateThreasholdValue, 1, user_id]);
             // 3 return the top1 memory
             return res.rows
         } catch (Error) {
@@ -111,14 +111,14 @@ class MemoryService {
         }
     }
 
-    memoryDecision = async (query, duplcateThreasholdValue) => {
+    memoryDecision = async (query, duplcateThreasholdValue,user_id) => {
         try {
             //  get the memeory search response 
-            let userStoreMemory = await this.memorySearch(query, duplcateThreasholdValue);
+            let userStoreMemory = await this.memorySearch(query, duplcateThreasholdValue, user_id);
             // if no userstore memory found then it will be insert in the db 
             let metaData = await this.memoryMetaData(query);
             if (userStoreMemory.length === 0) {
-                return await this.storeMemory(query, 100, metaData.output.memory_type, metaData.output.source)
+                return await this.storeMemory(query, user_id, metaData.output.memory_type, metaData.output.source)
             }
             // if similarity score if less then 0.80 but greater then or equal to 0.60  then  system will decide whether the information need to be  update or insert
             let score = Number(userStoreMemory[0].duplicate_threashold_value.toFixed(2));
@@ -133,7 +133,7 @@ class MemoryService {
                 case "UPDATE":
                     return await this.updateMemory(query, userStoreMemory) // update the memory
                 case "INSERT":
-                    return await this.storeMemory(query,100,metaData.output.memory_type, metaData.output.source);
+                    return await this.storeMemory(query, user_id, metaData.output.memory_type, metaData.output.source);
                 case "IGNORE":
                     return {
                         "decision": "IGNORE",
