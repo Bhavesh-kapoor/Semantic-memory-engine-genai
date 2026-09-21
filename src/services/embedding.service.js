@@ -20,14 +20,14 @@ class MemoryService {
         }
     }
 
-    storeMemory = async (text, user_id, memory_type, source) => {
+    storeMemory = async (text, user_id, memory_type, source, importance) => {
         const client = await this.db.connect()
         try {
             await client.query('BEGIN')
             let textEmbeddings = await this.createEmbeddings(text)
             textEmbeddings = `[${textEmbeddings.join(',')}]`
-            let query = "INSERT INTO memories (memory,embeddings,user_id,source ,memory_type) VALUES ($1,$2,$3,$4,$5)"
-            let memory = await client.query(query, [text, textEmbeddings, user_id, source, memory_type])
+            let query = "INSERT INTO memories (memory,embeddings,user_id,source ,memory_type,importance) VALUES ($1,$2,$3,$4,$5,$6)"
+            let memory = await client.query(query, [text, textEmbeddings, user_id, source, memory_type, importance])
             await client.query('COMMIT')
             if (memory.rowCount > 0) {
                 return { "message": 'Memory stored successfully!' }
@@ -128,7 +128,7 @@ class MemoryService {
                 case "UPDATE":
                     return await this.updateMemory(query, userStoreMemory) // update the memory
                 case "INSERT":
-                    return await this.storeMemory(query, user_id, llmdecision.memory_type, llmdecision.source);
+                    return await this.storeMemory(query, user_id, llmdecision.memory_type, llmdecision.source, llmdecision.importance);
                 case "IGNORE":
                     return {
                         "decision": "IGNORE",
