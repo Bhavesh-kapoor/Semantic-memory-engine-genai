@@ -20,14 +20,14 @@ class MemoryService {
         }
     }
 
-    storeMemory = async (text, user_id, memory_type, source) => {
+    storeMemory = async (text, user_id, memory_type, source, importance) => {
         const client = await this.db.connect()
         try {
             await client.query('BEGIN')
             let textEmbeddings = await this.createEmbeddings(text)
             textEmbeddings = `[${textEmbeddings.join(',')}]`
-            let query = "INSERT INTO memories (memory,embeddings,user_id,source ,memory_type) VALUES ($1,$2,$3,$4,$5)"
-            let memory = await client.query(query, [text, textEmbeddings, user_id, source, memory_type])
+            let query = "INSERT INTO memories (memory,embeddings,user_id,source ,memory_type,importance) VALUES ($1,$2,$3,$4,$5,$6)"
+            let memory = await client.query(query, [text, textEmbeddings, user_id, source, memory_type, importance])
             await client.query('COMMIT')
             if (memory.rowCount > 0) {
                 return { "message": 'Memory stored successfully!' }
@@ -44,11 +44,11 @@ class MemoryService {
 
     }
 
-    fetchMemory = async (userQuery) => {
+    fetchMemory = async (userQuery, user_id) => {
         try {
             let userEmbeddings = await this.createEmbeddings(userQuery);
-            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories where (1 - (embeddings <=>$1::vector)) > $3    order by  embeddings <=>$1::vector LIMIT $2"
-            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5, 0.30])
+            let query = "SELECT id , memory , (1 - (embeddings <=>$1::vector)) as similarity_score from memories where (1 - (embeddings <=>$1::vector)) > $3 and user_id =$4    order by  embeddings <=>$1::vector LIMIT $2"
+            let res = await this.db.query(query, [`[${userEmbeddings.join(',')}]`, 5, 0.30, user_id])
             return res.rows
 
         } catch (err) {
@@ -57,9 +57,9 @@ class MemoryService {
         }
     }
 
-    askAi = async (userQuery) => {
+    askAi = async (userQuery, user_id) => {
         try {
-            let memories = await this.fetchMemory(userQuery)
+            let memories = await this.fetchMemory(userQuery, user_id)
             const prompt = `
                 You are an AI assistant with access to the user's stored memories.
 
@@ -96,13 +96,13 @@ class MemoryService {
         }
     }
 
-    memorySearch = async (query, duplcateThreasholdValue) => {
+    memorySearch = async (query, duplcateThreasholdValue, user_id) => {
         try {
             // 1. generate user embeddings
             let userEmbeddings = await this.createEmbeddings(query);
             // 2. find the top1 memory from the database with duplicate threashold,
-            let sqlQuery = "SELECT id, memory, (1 - (embeddings <=> $1::vector)) as duplicate_threashold_value FROM memories WHERE (1 - (embeddings <=> $1::vector)) > $2 order by (embeddings <=> $1::vector) LIMIT $3";
-            let res = await this.db.query(sqlQuery, [`[${userEmbeddings.join(',')}]`, duplcateThreasholdValue, 1]);
+            let sqlQuery = "SELECT id, memory, (1 - (embeddings <=> $1::vector)) as duplicate_threashold_value FROM memories WHERE (1 - (embeddings <=> $1::vector)) > $2  and user_id = $4 order by (embeddings <=> $1::vector) LIMIT $3";
+            let res = await this.db.query(sqlQuery, [`[${userEmbeddings.join(',')}]`, duplcateThreasholdValue, 1, user_id]);
             // 3 return the top1 memory
             return res.rows
         } catch (Error) {
@@ -111,17 +111,11 @@ class MemoryService {
         }
     }
 
-    memoryDecision = async (query, duplcateThreasholdValue) => {
+    memoryDecision = async (query, duplcateThreasholdValue, user_id) => {
         try {
             //  get the memeory search response 
-            let userStoreMemory = await this.memorySearch(query, duplcateThreasholdValue);
-            // if no userstore memory found then it will be insert in the db 
-            let metaData = await this.memoryMetaData(query);
-            if (userStoreMemory.length === 0) {
-                return await this.storeMemory(query, 100, metaData.output.memory_type, metaData.output.source)
-            }
-            // if similarity score if less then 0.80 but greater then or equal to 0.60  then  system will decide whether the information need to be  update or insert
-            let score = Number(userStoreMemory[0].duplicate_threashold_value.toFixed(2));
+            let userStoreMemory = await this.memorySearch(query, duplcateThreasholdValue, user_id);
+            let score = userStoreMemory.length > 0 ? Number(userStoreMemory[0].duplicate_threashold_value.toFixed(2)) : 0;
             if (score > 0.80) {
                 return {
                     "decision": "IGNORE",
@@ -129,17 +123,19 @@ class MemoryService {
                 }
             }
             let llmdecision = await this.memoryLLMDecision(query, userStoreMemory)
+            console.log("llmdecision", llmdecision)
             switch (llmdecision.decision) {
                 case "UPDATE":
                     return await this.updateMemory(query, userStoreMemory) // update the memory
                 case "INSERT":
-                    return await this.storeMemory(query,100,metaData.output.memory_type, metaData.output.source);
+                    return await this.storeMemory(query, user_id, llmdecision.memory_type, llmdecision.source, llmdecision.importance);
                 case "IGNORE":
                     return {
                         "decision": "IGNORE",
                         "reason": "The new memory conveys the same sentiment and information as the existing memory, despite differences in capitalization and spacing."
                     }
             }
+
 
         } catch (Error) {
             console.log("something went wrong", Error)
@@ -153,35 +149,82 @@ class MemoryService {
             const prompt = `
             You are a memory decision engine.
 
-            Your job is to compare an existing memory with a new memory.
+            Your job is to compare an existing memory with a new memory and classify the new memory.
 
             Existing memory:
-            ${existingMemory[0].memory}
+            ${existingMemory.length > 0 ? existingMemory[0].memory : 'nothing'}   
 
             New memory:
             ${newMemory}
 
-            Choose exactly one decision:
+
+            DECISION:
+
+            Choose exactly one:
 
             1. IGNORE
-            - The new memory contains the same information as the existing memory.
+            - New memory contains the same information as existing memory.
             - No database change is required.
 
             2. UPDATE
-            - The new memory changes, corrects, or replaces information in the existing memory.
+            - New memory changes, corrects, or replaces information in existing memory.
 
             3. INSERT
-            - The new memory contains genuinely new information.
+            - New memory contains genuinely new information.
             - It should be stored as a separate memory.
 
-            Return JSON only.
 
-            Required format:
+            MEMORY TYPE:
+
+            Choose exactly one:
+
+            - preference: User likes, dislikes, or preferences.
+            - goal: Something the user wants to achieve.
+            - skill: A skill, technology, or capability the user has.
+            - fact: Stable information about the user.
+            - context: Temporary or situational information.
+            - relationship: Information about people or relationships.
+            - project: Information about a user's project or work.
+            - other: If none of the above apply.
+
+
+            SOURCE:
+
+            Choose exactly one:
+
+            - conversation: Information explicitly provided by the user.
+            - system: Information generated by the system.
+            - imported: Information imported from an external source.
+            - other: If none of the above apply.
+
+
+            IMPORTANCE:
+
+            Give a number between 0 and 1.
+
+            0 = almost useless for future conversations
+            1 = extremely useful for future conversations.
+
+
+            IMPORTANT RULES:
+
+            - Do not invent information.
+            - Use only the information present in the memories.
+            - Return valid JSON only.
+            - Do not add markdown.
+            - Do not add explanations outside JSON.
+
+
+            Required JSON format:
+
             {
                 "decision": "IGNORE | UPDATE | INSERT",
-                "reason": "short explanation"
+                "reason": "short explanation",
+                "memory_type": "preference | goal | skill | fact | context | relationship | project | other",
+                "source": "conversation | system | imported | other",
+                "importance": 0.0
             }
-        `;
+            `;
 
             const response = await OpenAIClient.responses.create({
                 model: "gpt-4.1-nano",
@@ -191,22 +234,63 @@ class MemoryService {
                         content: prompt
                     }
                 ],
-                max_output_tokens: 150
+                max_output_tokens: 200
             });
 
             const result = JSON.parse(response.output_text);
 
-            // Safety validation
-            const allowedDecisions = ["IGNORE", "UPDATE", "INSERT"];
+            // Validation
+            const allowedDecisions = [
+                "IGNORE",
+                "UPDATE",
+                "INSERT"
+            ];
+
+            const allowedMemoryTypes = [
+                "preference",
+                "goal",
+                "skill",
+                "fact",
+                "context",
+                "relationship",
+                "project",
+                "other"
+            ];
+
+            const allowedSources = [
+                "conversation",
+                "system",
+                "imported",
+                "other"
+            ];
 
             if (!allowedDecisions.includes(result.decision)) {
-                throw new Error(`Invalid LLM decision: ${result.decision}`);
+                throw new Error(`Invalid decision: ${result.decision}`);
+            }
+
+            if (!allowedMemoryTypes.includes(result.memory_type)) {
+                throw new Error(`Invalid memory type: ${result.memory_type}`);
+            }
+
+            if (!allowedSources.includes(result.source)) {
+                throw new Error(`Invalid source: ${result.source}`);
+            }
+
+            if (
+                typeof result.importance !== "number" ||
+                result.importance < 0 ||
+                result.importance > 1
+            ) {
+                throw new Error(`Invalid importance: ${result.importance}`);
             }
 
             return {
                 decision: result.decision,
                 reason: result.reason || null,
-                memory_id: existingMemory[0].id
+                memory_type: result.memory_type,
+                source: result.source,
+                importance: result.importance,
+                memory_id: existingMemory[0]?.id || null
             };
 
         } catch (error) {

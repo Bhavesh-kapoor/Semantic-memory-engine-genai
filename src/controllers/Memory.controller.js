@@ -6,35 +6,35 @@ class MemoryController {
 
     constructor() {
         this.memoryService = new MemoryService()
+        this.user_id = 100
     }
 
     store = asyncHandler(async (req, res) => {
         const { memory } = req.body
         if (!memory) { return responseHandler(res, null, 'memory is required', 400) }
-        const result = await this.memoryService.storeMemory(memory)
+        const result = await this.memoryService.storeMemory(memory, this.user_id)
         return responseHandler(res, null, result.message, 200)
     })
 
     search = asyncHandler(async (req, res) => {
         const { query } = req.body
         if (!query) { return responseHandler(res, null, 'user query  is required', 400) }
-        const result = await this.memoryService.fetchMemory(query)
+        const result = await this.memoryService.fetchMemory(query, this.user_id)
         return responseHandler(res, null, result, 200)
     })
 
     llmCall = asyncHandler(async (req, res) => {
         const { query } = req.body
         if (!query) { return responseHandler(res, null, 'user query  is required', 400) }
-        const result = await this.memoryService.askAi(query)
+        const result = await this.memoryService.askAi(query, this.user_id)
         return responseHandler(res, result, "response generated successfully!", 200)
     })
 
     memorySearch = asyncHandler(async (req, res) => {
         const { memory } = req.body
         if (!memory) { return responseHandler(res, null, 'user memory  is required', 400) }
-        let response = await this.memoryService.memoryDecision(memory, 0.61)
+        let response = await this.memoryService.memoryDecision(memory, 0.61, this.user_id)
         return responseHandler(res, response, "memory fetched successfully!", 200)
-
     })
 
 
